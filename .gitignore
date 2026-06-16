@@ -8,6 +8,10 @@ venv/
 __pycache__/
 *.pyc
 
+# SQLite database
+*.db
+*.sqlite3
+
 # Node
 node_modules/
 
