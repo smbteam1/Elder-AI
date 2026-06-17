@@ -1,7 +1,6 @@
 """POST /webhooks/retell — receive Retell call lifecycle events."""
 import json
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from retell.lib import verify as retell_verify
@@ -10,19 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models import CallRecord
 from app.db.session import get_db
+from app.services.call_sync import update_record_from_call
 
 logger = logging.getLogger("elder_ai.webhook")
 
 router = APIRouter()
-
-
-def _ms_to_seconds(start: int | None, end: int | None) -> float | None:
-    if start is None or end is None:
-        return None
-    try:
-        return round((end - start) / 1000.0, 2)
-    except (TypeError, ValueError):
-        return None
 
 
 @router.post("/webhooks/retell")
@@ -76,23 +67,11 @@ async def retell_webhook(request: Request, db: Session = Depends(get_db)):
         logger.warning("call_analyzed for unknown call_record_id=%s; ignoring", call_record_id)
         return {"status": "ok"}
 
-    analysis = call.get("call_analysis", {}) or {}
-
-    record.call_successful = analysis.get("call_successful")
-    record.user_sentiment = analysis.get("user_sentiment")
-    record.summary = analysis.get("call_summary")
-    record.call_status = call.get("call_status")
-    record.disconnection_reason = call.get("disconnection_reason")
-    record.transcript = call.get("transcript")
-    record.duration_seconds = _ms_to_seconds(
-        call.get("start_timestamp"), call.get("end_timestamp")
-    )
-    # 7. Idempotent: overwrite even if already analyzed.
-    record.status = "analyzed"
-    record.updated_at = datetime.now(timezone.utc)
+    # 7. Idempotent: overwrite even if already analyzed (shared mapper).
+    update_record_from_call(record, call)
 
     db.commit()
-    logger.info("Updated call_record %s -> analyzed", call_record_id)
+    logger.info("Updated call_record %s -> %s", call_record_id, record.status)
 
     # 6. Fast 200 OK.
     return {"status": "ok"}

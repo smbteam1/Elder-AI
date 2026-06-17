@@ -69,3 +69,16 @@ def place_call(
     call_id = getattr(response, "call_id", None)
     logger.info("Retell accepted call to %s -> call_id=%s", to_number, call_id)
     return call_id
+
+
+def get_call(call_id: str) -> dict:
+    """Fetch the current state of a call from Retell as a plain dict.
+
+    Used to pull analysis results when a webhook was missed. Raises on error.
+    """
+    response = _client().call.retrieve(call_id)
+    # Pydantic model -> dict so call_sync can treat it like the webhook payload.
+    # warnings=False silences harmless union-serialization notices on transcript objects.
+    if hasattr(response, "model_dump"):
+        return response.model_dump(warnings=False)
+    return dict(response)
